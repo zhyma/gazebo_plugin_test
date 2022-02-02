@@ -2,10 +2,12 @@
 #include <ros/ros.h>
 #include <gazebo/physics/physics.hh>
 
-#include <functional>
-#include <gazebo/gazebo.hh>
-#include <gazebo/common/common.hh>
-#include <ignition/math/Vector3.hh>
+// #include <functional>
+// #include <gazebo/gazebo.hh>
+// #include <gazebo/common/common.hh>
+// #include <ignition/math/Vector3.hh>
+
+#include <iostream>
 
 
 namespace gazebo
@@ -15,7 +17,6 @@ namespace gazebo
     public:
       EnvMod() : WorldPlugin()
       {
-
       }
 
       void Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
@@ -28,7 +29,7 @@ namespace gazebo
           return;
         }
 
-        ROS_INFO("Hello World!\n");
+        ROS_INFO("Loading\n");
         this->world = _world;
         this->add_entity_connection = event::Events::ConnectAddEntity(
                                       std::bind(&EnvMod::addEntityEventCallback, 
@@ -41,16 +42,14 @@ namespace gazebo
       }
       void OnUpdate()
       {
-        // ROS_INFO("test\n");
+        ROS_INFO("OnUpdate()\n");
+        // // ROS_INFO("test\n");
         if (this->rod == NULL && rodReady==true)
         {
           this->rod = this->world->ModelByName("rod");
-          printf("ModelName: %s \n", rod->GetName().c_str());
+          if (this->rod!= NULL)
+            std::cout << "Get model: " << rod->GetName() << std::endl;
         }
-        // if (this->rodPtr != NULL)
-        //   ROS_INFO("rod found\n");
-        // else
-        //   ROS_INFO("NOT found\n");
       }
 
     private:
@@ -67,24 +66,9 @@ namespace gazebo
       {
         // Check entity name...
         // Trigger initialization...
-        // ros::Rate rate(10);
-        // ROS_INFO("searching...\n");
-        // while (this->rodPtr == NULL)
-        // {
-        //   ROS_INFO("NOT found\n");
-        //   rate.sleep();
-        //   this->rodPtr = this->world->ModelByName("rod");
-        // }
-        // ROS_INFO("done...\n");
-        // this->rodPtr = this->world->ModelByName("rod");
-        printf("get: %s \n", name.c_str());
+        std::cout << "Callback get:" << name << std::endl;
         if (name=="rod")
-        {rodReady = true;}
-
-        // printf("ModelCount: %d \n", this->world->ModelCount());
-        // physics::Model_V list = this->world->Models();
-        // for (int i = 0; i < this->world->ModelCount(); i++)
-        //   printf("ModelName: %s \n", list[i]->GetName().c_str());
+          rodReady = true;
       }
 
   };
