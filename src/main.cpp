@@ -11,8 +11,9 @@
 #include <iostream>
 
 #include "ros/ros.h"
-// #include "std_msgs/String.h"
-#include <std_msgs/Float64MultiArray.h>
+#include <env_ctrl/CylinderProperties.h>
+#include "std_msgs/String.h"
+// #include <std_msgs/Float64MultiArray.h>
 
 // #include <boost/bind.hpp>
 // #include <boost/thread.hpp>
@@ -42,9 +43,10 @@ namespace gazebo
         // init ROS node
         int argc = 0;
         char** argv = NULL;
-        ros::init(argc, argv, "Rod_state_controller");
+        ros::init(argc, argv, "Rod_properties_controller");
         // publisher: pub rod position, orientation, and dimension
-        state_pub = n.advertise<std_msgs::Float64MultiArray>("get_rod_state", 1000);
+        properties_pub = n.advertise<env_ctrl::CylinderProperties>("get_rod_properties", 1000);
+        properties_sub = n.subscribe("set_rod_properties", 1000, &EnvMod::properties_callback, this);
 
         // loading models
         this->world = _world;
@@ -68,9 +70,10 @@ namespace gazebo
         if (this->rod != NULL)
         {
           // Get link "target_rod"
+          // publish link pose and states
           physics::LinkPtr link = this->rod->GetLink("target_rod");
           
-          std_msgs::Float64MultiArray msg;
+          env_ctrl::CylinderProperties msg;
           ignition::math::Pose3d pose = link->WorldPose();
           ignition::math::Vector3<double> position = pose.Pos();
 
@@ -80,19 +83,20 @@ namespace gazebo
           boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
 
           // x, y, z, radius, length
-          msg.data.push_back(position.X());
-          msg.data.push_back(position.Y());
-          msg.data.push_back(position.Z());
-          msg.data.push_back(cylinder->GetRadius());
-          msg.data.push_back(cylinder->GetLength());
-          state_pub.publish(msg);
+          msg.x = position.X();
+          msg.y = position.Y();
+          msg.z = position.Z();
+          msg.r = cylinder->GetRadius();
+          msg.l = cylinder->GetLength();
+          properties_pub.publish(msg);
         }
       }
 
     private:
       // ROS node part
       ros::NodeHandle n;
-      ros::Publisher state_pub;
+      ros::Publisher properties_pub;
+      ros::Subscriber properties_sub;
 
       // Gazebo part
       physics::WorldPtr world;
@@ -104,6 +108,9 @@ namespace gazebo
       event::ConnectionPtr updateConnection;
       event::ConnectionPtr add_entity_connection;
 
+      bool new_properties;
+      double properties[5];
+
       void addEntityEventCallback(const std::string &name)
       {
         // Check entity name...
@@ -111,6 +118,19 @@ namespace gazebo
         std::cout << "Callback get:" << name << std::endl;
         if (name=="rod")
           rod_ready = true;
+      }
+
+      void properties_callback(const env_ctrl::CylinderProperties::ConstPtr& msg)
+      {
+        ROS_INFO("sub callback");
+        this->properties[0] = msg->x;
+        this->properties[1] = msg->y;
+        this->properties[2] = msg->z;
+        this->properties[3] = msg->r;
+        this->properties[4] = msg->l;
+        new_properties = true;
+        std::cout << properties[0] << ", " << properties[1] << ", " << properties[2];
+        std::cout << ", " << properties[3] << ", " << properties[4] << ", " <<std::endl;
       }
 
   };

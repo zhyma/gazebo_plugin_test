@@ -17,6 +17,8 @@ endif()
 find_package(catkin REQUIRED COMPONENTS
   roscpp
   gazebo_ros
+  std_msgs
+  message_generation
 )
 
 # Depend on system install of Gazebo
@@ -25,10 +27,22 @@ find_package(gazebo REQUIRED)
 link_directories(${GAZEBO_LIBRARY_DIRS})
 include_directories(${Boost_INCLUDE_DIR} ${catkin_INCLUDE_DIRS} ${GAZEBO_INCLUDE_DIRS})
 
+add_message_files(
+  FILES
+    CylinderProperties.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+    std_msgs
+)
+
 catkin_package(
   DEPENDS
     roscpp
     gazebo_ros
+  CATKIN_DEPENDS
+    message_runtime
 )
 
 add_library(${PROJECT_NAME} src/main.cpp)
