@@ -54,7 +54,7 @@ namespace gazebo
                                       std::bind(&EnvMod::addEntityEventCallback, 
                                       this, std::placeholders::_1));
         _world->InsertModelFile("model://rod");
-        _world->InsertModelFile("model://cable");
+        // _world->InsertModelFile("model://cable");
 
         this->updateConnection = event::Events::ConnectWorldUpdateBegin(
           std::bind(&EnvMod::OnUpdate, this));
@@ -69,10 +69,23 @@ namespace gazebo
         }
         if (this->rod != NULL)
         {
+          // update model property if needed.
+          if (new_properties)
+          {
+            ignition::math::Pose3d model_pose = rod->WorldPose();
+            ignition::math::Vector3d new_vec(properties[0], properties[1], properties[2]);
+            ignition::math::Quaterniond rot(model_pose.Rot());
+            ignition::math::Pose3d new_pose(new_vec, rot);
+            // model_pose.Pos().X() = properties[0];
+            // model_pose.Pos().Y() = properties[1];
+            // model_pose.Pos().Z() = properties[2];
+            this->rod->SetWorldPose(new_pose);
+            new_properties = false;
+          }
+          
           // Get link "target_rod"
           // publish link pose and states
           physics::LinkPtr link = this->rod->GetLink("target_rod");
-          
           env_ctrl::CylinderProperties msg;
           ignition::math::Pose3d pose = link->WorldPose();
           ignition::math::Vector3<double> position = pose.Pos();
