@@ -3,7 +3,7 @@
 #include <gazebo/physics/physics.hh>
 
 // #include <functional>
-// #include <gazebo/gazebo.hh>
+#include <gazebo/gazebo.hh>
 #include <gazebo/common/common.hh>
 // #include <ignition/math/Pose3.hh>
 // #include <ignition/math/Vector3.hh>
@@ -30,6 +30,7 @@ namespace gazebo
 
       void Load(physics::WorldPtr _world, sdf::ElementPtr _sdf)
       {
+        sdf = _sdf;
         // Make sure the ROS node for Gazebo has already been initialized
         if (!ros::isInitialized())
         {
@@ -44,7 +45,7 @@ namespace gazebo
         int argc = 0;
         char** argv = NULL;
         ros::init(argc, argv, "Rod_properties_controller");
-        // publisher: pub rod position, orientation, and dimension
+        // ROS publisher: pub rod position, orientation, and dimension
         properties_pub = n.advertise<env_ctrl::CylinderProperties>("get_rod_properties", 1000);
         properties_sub = n.subscribe("set_rod_properties", 1000, &EnvMod::properties_callback, this);
 
@@ -58,6 +59,12 @@ namespace gazebo
 
         this->updateConnection = event::Events::ConnectWorldUpdateBegin(
           std::bind(&EnvMod::OnUpdate, this));
+
+        this->node = transport::NodePtr(new gazebo::transport::Node());
+        this->node->Init(_world->Name());
+        visPub = this->node->Advertise<msgs::Visual>("~/visual");
+        visPub->WaitForConnection();
+
       }
       void OnUpdate()
       {
@@ -69,31 +76,63 @@ namespace gazebo
         }
         if (this->rod != NULL)
         {
-          // update model property if needed.
-          if (new_properties)
-          {
-            ignition::math::Pose3d model_pose = rod->WorldPose();
-            ignition::math::Vector3d new_vec(properties[0], properties[1], properties[2]);
-            ignition::math::Quaterniond rot(model_pose.Rot());
-            ignition::math::Pose3d new_pose(new_vec, rot);
-            // model_pose.Pos().X() = properties[0];
-            // model_pose.Pos().Y() = properties[1];
-            // model_pose.Pos().Z() = properties[2];
-            this->rod->SetWorldPose(new_pose);
-            new_properties = false;
-          }
-          
           // Get link "target_rod"
-          // publish link pose and states
           physics::LinkPtr link = this->rod->GetLink("target_rod");
-          env_ctrl::CylinderProperties msg;
-          ignition::math::Pose3d pose = link->WorldPose();
-          ignition::math::Vector3<double> position = pose.Pos();
-
+          // Get link collision property
           physics::CollisionPtr collision = link->GetCollision("target_rod_collision");
           physics::ShapePtr shape = collision->GetShape();
           int shape_type = collision->GetShapeType();
           boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
+
+          // Get link visual property
+          sdf::ElementPtr linkSDF = link->GetSDF();
+          sdf::ElementPtr visualSDF = linkSDF->GetElement("visual");
+          std::string visual_name_ = visualSDF->Get<std::string>("name");
+          msgs::Visual visualMsg = link->GetVisualMessage(visual_name_);
+          
+
+          // update model property if needed.
+          if (new_properties)
+          {
+            visualMsg.set_name(link->GetScopedName());
+            visualMsg.set_parent_name(rod->GetScopedName());
+            std::cout << "visual_name_: " << visual_name_ << std::endl;
+            std::cout << "visualMsg name: " << visualMsg.name() << std::endl;
+
+            msgs::Geometry * geomMsg = visualMsg.mutable_geometry();
+            if (geomMsg->has_box())
+              ROS_INFO("has box");
+            else if (geomMsg->has_cylinder())
+              ROS_INFO("has cylinder");
+            else if (geomMsg == NULL)
+              ROS_INFO("geom is NULL");
+            else
+              ROS_INFO("has something else");
+            // geomMsg->mutable_cylinder()->set_radius(properties[3]);
+            // geomMsg->mutable_cylinder()->set_length(properties[4]);
+            visualMsg.set_transparency(properties[3]);
+            visPub->Publish(visualMsg);
+
+            ignition::math::Pose3d model_pose = this->rod->WorldPose();
+            ignition::math::Vector3d new_vec(properties[0], properties[1], properties[2]);
+            ignition::math::Quaterniond rot(model_pose.Rot());
+            ignition::math::Pose3d new_pose(new_vec, rot);
+            this->rod->SetWorldPose(new_pose);
+
+            cylinder->SetSize(properties[3], properties[4]);
+
+            new_properties = false;
+          }
+          
+          // publish link pose and states
+          env_ctrl::CylinderProperties msg;
+          ignition::math::Pose3d pose = link->WorldPose();
+          ignition::math::Vector3<double> position = pose.Pos();
+
+          // physics::CollisionPtr collision = link->GetCollision("target_rod_collision");
+          // physics::ShapePtr shape = collision->GetShape();
+          // int shape_type = collision->GetShapeType();
+          // boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
 
           // x, y, z, radius, length
           msg.x = position.X();
@@ -112,6 +151,8 @@ namespace gazebo
       ros::Subscriber properties_sub;
 
       // Gazebo part
+      sdf::ElementPtr sdf;
+
       physics::WorldPtr world;
       // Pointer to the update event connection
       physics::ModelPtr rod = NULL;
@@ -120,6 +161,10 @@ namespace gazebo
       // Pointer to the update event connection
       event::ConnectionPtr updateConnection;
       event::ConnectionPtr add_entity_connection;
+
+      // To update the visual
+      transport::NodePtr node;
+      transport::PublisherPtr visPub;
 
       bool new_properties;
       double properties[5];
