@@ -9,17 +9,11 @@
 // #include <ignition/math/Vector3.hh>
 #include <gazebo/rendering/rendering.hh>
 
-
 #include <iostream>
 
 #include "ros/ros.h"
 #include <env_ctrl/CylinderProperties.h>
 #include "std_msgs/String.h"
-// #include <std_msgs/Float64MultiArray.h>
-
-// #include <boost/bind.hpp>
-// #include <boost/thread.hpp>
-// #include <boost/thread/mutex.hpp>
 
 namespace gazebo
 {
@@ -92,16 +86,23 @@ namespace gazebo
           // update model property if needed.
           if (new_properties)
           {
+            // update visual
+            // prepare visual message
             visualMsg.set_name(link->GetScopedName());
             visualMsg.set_parent_name(rod->GetScopedName());
 
+            // update shape
             msgs::Geometry *geomMsg = visualMsg.mutable_geometry();
             geomMsg->set_type(msgs::Geometry::CYLINDER);
             geomMsg->mutable_cylinder()->set_radius(properties[3]);
             geomMsg->mutable_cylinder()->set_length(properties[4]);
 
+            // get color
+            visualMsg.mutable_material()->mutable_script()->set_name("Gazebo/Red");
+
             visPub->Publish(visualMsg);
 
+            // update physical
             ignition::math::Pose3d model_pose = this->rod->WorldPose();
             ignition::math::Vector3d new_vec(properties[0], properties[1], properties[2]);
             ignition::math::Quaterniond rot(model_pose.Rot());
@@ -117,11 +118,6 @@ namespace gazebo
           env_ctrl::CylinderProperties msg;
           ignition::math::Pose3d pose = link->WorldPose();
           ignition::math::Vector3<double> position = pose.Pos();
-
-          // physics::CollisionPtr collision = link->GetCollision("target_rod_collision");
-          // physics::ShapePtr shape = collision->GetShape();
-          // int shape_type = collision->GetShapeType();
-          // boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
 
           // x, y, z, radius, length
           msg.x = position.X();
