@@ -7,6 +7,8 @@
 #include <gazebo/common/common.hh>
 // #include <ignition/math/Pose3.hh>
 // #include <ignition/math/Vector3.hh>
+#include <gazebo/rendering/rendering.hh>
+
 
 #include <iostream>
 
@@ -85,32 +87,19 @@ namespace gazebo
           boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
 
           // Get link visual property
-          sdf::ElementPtr linkSDF = link->GetSDF();
-          sdf::ElementPtr visualSDF = linkSDF->GetElement("visual");
-          std::string visual_name_ = visualSDF->Get<std::string>("name");
-          msgs::Visual visualMsg = link->GetVisualMessage(visual_name_);
-          
+          msgs::Visual visualMsg = link->GetVisualMessage("target_rod_vis");
 
           // update model property if needed.
           if (new_properties)
           {
             visualMsg.set_name(link->GetScopedName());
             visualMsg.set_parent_name(rod->GetScopedName());
-            std::cout << "visual_name_: " << visual_name_ << std::endl;
-            std::cout << "visualMsg name: " << visualMsg.name() << std::endl;
 
-            msgs::Geometry * geomMsg = visualMsg.mutable_geometry();
-            if (geomMsg->has_box())
-              ROS_INFO("has box");
-            else if (geomMsg->has_cylinder())
-              ROS_INFO("has cylinder");
-            else if (geomMsg == NULL)
-              ROS_INFO("geom is NULL");
-            else
-              ROS_INFO("has something else");
-            // geomMsg->mutable_cylinder()->set_radius(properties[3]);
-            // geomMsg->mutable_cylinder()->set_length(properties[4]);
-            visualMsg.set_transparency(properties[3]);
+            msgs::Geometry *geomMsg = visualMsg.mutable_geometry();
+            geomMsg->set_type(msgs::Geometry::CYLINDER);
+            geomMsg->mutable_cylinder()->set_radius(properties[3]);
+            geomMsg->mutable_cylinder()->set_length(properties[4]);
+
             visPub->Publish(visualMsg);
 
             ignition::math::Pose3d model_pose = this->rod->WorldPose();
