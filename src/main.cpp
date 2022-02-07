@@ -45,21 +45,51 @@ namespace gazebo
         properties_pub = n.advertise<env_ctrl::CylinderProperties>("get_rod_properties", 1000);
         properties_sub = n.subscribe("set_rod_properties", 1000, &EnvMod::properties_callback, this);
 
+        this->node = transport::NodePtr(new gazebo::transport::Node());
+        this->node->Init(_world->Name());
+        visPub = this->node->Advertise<msgs::Visual>("~/visual");
+        visPub->WaitForConnection();
+
+        // Create a publisher on the ~/factory topic
+        transport::PublisherPtr factoryPub = node->Advertise<msgs::Factory>("~/factory");
+
         // loading models
         this->world = _world;
         this->add_entity_connection = event::Events::ConnectAddEntity(
                                       std::bind(&EnvMod::addEntityEventCallback, 
                                       this, std::placeholders::_1));
-        _world->InsertModelFile("model://rod");
+        // _world->InsertModelFile("model://rod");
         // _world->InsertModelFile("model://cable");
+
+        // Create the message
+        msgs::Factory msg;
+
+        // load rod
+        msg.set_sdf_filename("model://rod");
+
+        // Pose to initialize the model to
+        msgs::Set(msg.mutable_pose(),
+            ignition::math::Pose3d(
+              ignition::math::Vector3d(0.2, 0.0, 0.2),
+              ignition::math::Quaterniond(0, 0, 0)));
+
+        // Send the message
+        factoryPub->Publish(msg);
+
+        // load cable
+        msg.set_sdf_filename("model://cable");
+
+        // Pose to initialize the model to
+        msgs::Set(msg.mutable_pose(),
+            ignition::math::Pose3d(
+              ignition::math::Vector3d(0.2-0.6, 0, 0.2+0.1),
+              ignition::math::Quaterniond(0, 0, 0)));
+
+        // Send the message
+        factoryPub->Publish(msg);
 
         this->updateConnection = event::Events::ConnectWorldUpdateBegin(
           std::bind(&EnvMod::OnUpdate, this));
-
-        this->node = transport::NodePtr(new gazebo::transport::Node());
-        this->node->Init(_world->Name());
-        visPub = this->node->Advertise<msgs::Visual>("~/visual");
-        visPub->WaitForConnection();
 
       }
       void OnUpdate()
@@ -70,7 +100,13 @@ namespace gazebo
           if (this->rod != NULL)
             std::cout << "Get model: " << rod->GetName() << std::endl;
         }
-        if (this->rod != NULL)
+        if (this->cable == NULL && cable_ready==true)
+        {
+          this->cable = this->world->ModelByName("cable");
+          if (this->rod != NULL)
+            std::cout << "Get model: " << cable->GetName() << std::endl;
+        }
+        if (this->rod != NULL && this->cable != NULL)
         {
           // Get link "target_rod"
           physics::LinkPtr link = this->rod->GetLink("target_rod");
@@ -86,7 +122,7 @@ namespace gazebo
           // update model property if needed.
           if (new_properties)
           {
-            // update visual
+            // update rod's visual
             // prepare visual message
             visualMsg.set_name(link->GetScopedName());
             visualMsg.set_parent_name(rod->GetScopedName());
@@ -102,14 +138,23 @@ namespace gazebo
 
             visPub->Publish(visualMsg);
 
-            // update physical
-            ignition::math::Pose3d model_pose = this->rod->WorldPose();
-            ignition::math::Vector3d new_vec(properties[0], properties[1], properties[2]);
-            ignition::math::Quaterniond rot(model_pose.Rot());
-            ignition::math::Pose3d new_pose(new_vec, rot);
-            this->rod->SetWorldPose(new_pose);
+            // update rod's physical
+            ignition::math::Pose3d rod_pose = this->rod->WorldPose();
+            ignition::math::Vector3d pos_vec(properties[0], properties[1], properties[2]);
+            ignition::math::Quaterniond rod_rot(rod_pose.Rot());
+            ignition::math::Pose3d rod_new_pose(pos_vec, rod_rot);
+            this->rod->SetWorldPose(rod_new_pose);
 
             cylinder->SetSize(properties[3], properties[4]);
+
+            // update cable's pose and reset
+            ignition::math::Pose3d cable_pose = this->cable->WorldPose();
+            pos_vec[0] = pos_vec[0] - 0.6;
+            pos_vec[2] = pos_vec[2] + properties[3] + 0.1;
+            ignition::math::Quaterniond cable_rot(cable_pose.Rot());
+            ignition::math::Pose3d cable_new_pose(pos_vec, cable_rot);
+            this->cable->SetWorldPose(cable_new_pose);
+            this->cable.reset();
 
             new_properties = false;
           }
@@ -141,8 +186,9 @@ namespace gazebo
       physics::WorldPtr world;
       // Pointer to the update event connection
       physics::ModelPtr rod = NULL;
+      physics::ModelPtr cable = NULL;
       bool rod_ready = false;
-      bool cabel_ready = false;
+      bool cable_ready = false;
       // Pointer to the update event connection
       event::ConnectionPtr updateConnection;
       event::ConnectionPtr add_entity_connection;
@@ -161,6 +207,9 @@ namespace gazebo
         std::cout << "Callback get:" << name << std::endl;
         if (name=="rod")
           rod_ready = true;
+        std::cout << "Callback get:" << name << std::endl;
+        if (name=="cable")
+          cable_ready = true;
       }
 
       void properties_callback(const env_ctrl::CylinderProperties::ConstPtr& msg)

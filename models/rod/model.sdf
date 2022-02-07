@@ -43,7 +43,7 @@
       <!--horizontal rod-->
       <gravity>false</gravity>
       <!--<pose>0 0.375 0.213 1.570790 -0.5237 0</pose>-->
-      <pose>0 0.175 0.213 1.570790 0 0</pose>
+      <pose>0 0 0 1.570790 0 0</pose>
       <collision name="target_rod_collision">
         <geometry>
           <!--<box>
