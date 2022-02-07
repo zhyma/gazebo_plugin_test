@@ -50,16 +50,14 @@ namespace gazebo
         visPub = this->node->Advertise<msgs::Visual>("~/visual");
         visPub->WaitForConnection();
 
-        // Create a publisher on the ~/factory topic
-        transport::PublisherPtr factoryPub = node->Advertise<msgs::Factory>("~/factory");
+        // // Create a publisher on the ~/factory topic
+        factPub = node->Advertise<msgs::Factory>("~/factory");
 
         // loading models
         this->world = _world;
         this->add_entity_connection = event::Events::ConnectAddEntity(
                                       std::bind(&EnvMod::addEntityEventCallback, 
                                       this, std::placeholders::_1));
-        // _world->InsertModelFile("model://rod");
-        // _world->InsertModelFile("model://cable");
 
         // Create the message
         msgs::Factory msg;
@@ -74,7 +72,7 @@ namespace gazebo
               ignition::math::Quaterniond(0, 0, 0)));
 
         // Send the message
-        factoryPub->Publish(msg);
+        factPub->Publish(msg);
 
         // load cable
         msg.set_sdf_filename("model://cable");
@@ -86,7 +84,10 @@ namespace gazebo
               ignition::math::Quaterniond(0, 0, 0)));
 
         // Send the message
-        factoryPub->Publish(msg);
+        factPub->Publish(msg);
+
+        // _world->InsertModelFile("model://rod");
+        // _world->InsertModelFile("model://cable");
 
         this->updateConnection = event::Events::ConnectWorldUpdateBegin(
           std::bind(&EnvMod::OnUpdate, this));
@@ -102,9 +103,22 @@ namespace gazebo
         }
         if (this->cable == NULL && cable_ready==true)
         {
+          // physics::Model_V list = this->world->Models();
+
+          // for (int i=0; i < this->world->ModelCount(); i++)
+          // {
+          //   std::string name = list[i]->GetName();
+          //   std::cout << name << std::endl;
+          //   if (name.find("cable") != std::string::npos)
+          //   {
+          //       this->cable = this->world->ModelByName(name);
+          //   }
+          // }
           this->cable = this->world->ModelByName("cable");
-          if (this->rod != NULL)
+          if (this->cable != NULL)
             std::cout << "Get model: " << cable->GetName() << std::endl;
+
+          cable_ready==false;
         }
         if (this->rod != NULL && this->cable != NULL)
         {
@@ -122,6 +136,9 @@ namespace gazebo
           // update model property if needed.
           if (new_properties)
           {
+            this->cable->Fini();
+            // world->
+            std::cout<< "cable destoried: " << cable->GetName() << std::endl;
             // update rod's visual
             // prepare visual message
             visualMsg.set_name(link->GetScopedName());
@@ -147,16 +164,20 @@ namespace gazebo
 
             cylinder->SetSize(properties[3], properties[4]);
 
-            // update cable's pose and reset
-            ignition::math::Pose3d cable_pose = this->cable->WorldPose();
-            pos_vec[0] = pos_vec[0] - 0.6;
-            pos_vec[2] = pos_vec[2] + properties[3] + 0.1;
-            ignition::math::Quaterniond cable_rot(cable_pose.Rot());
-            ignition::math::Pose3d cable_new_pose(pos_vec, cable_rot);
-            this->cable->SetWorldPose(cable_new_pose);
-            this->cable.reset();
+            std::cout << "new cable" << std::endl;
+
+            msgs::Factory msg;
+            msg.set_sdf_filename("model://cable");
+
+            // Pose to initialize the model to
+            msgs::Set(msg.mutable_pose(),
+                ignition::math::Pose3d(
+                  ignition::math::Vector3d(properties[0]-0.6, properties[1], properties[2]+properties[3]+0.1),
+                  ignition::math::Quaterniond(0, 0, 0)));
+            factPub->Publish(msg);
 
             new_properties = false;
+            std::cout << "new set up done" << std::endl;
           }
           
           // publish link pose and states
@@ -196,6 +217,7 @@ namespace gazebo
       // To update the visual
       transport::NodePtr node;
       transport::PublisherPtr visPub;
+      transport::PublisherPtr factPub;
 
       bool new_properties;
       double properties[5];
