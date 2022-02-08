@@ -103,17 +103,17 @@ namespace gazebo
         }
         if (this->cable == NULL && cable_ready==true)
         {
-          // physics::Model_V list = this->world->Models();
+          physics::Model_V list = this->world->Models();
 
-          // for (int i=0; i < this->world->ModelCount(); i++)
-          // {
-          //   std::string name = list[i]->GetName();
-          //   std::cout << name << std::endl;
+          for (int i=0; i < this->world->ModelCount(); i++)
+          {
+            std::string name = list[i]->GetName();
+            std::cout << name << std::endl;
           //   if (name.find("cable") != std::string::npos)
           //   {
           //       this->cable = this->world->ModelByName(name);
           //   }
-          // }
+          }
           this->cable = this->world->ModelByName("cable");
           if (this->cable != NULL)
             std::cout << "Get model: " << cable->GetName() << std::endl;
@@ -136,9 +136,9 @@ namespace gazebo
           // update model property if needed.
           if (new_properties)
           {
-            this->cable->Fini();
-            // world->
+            world->RemoveModel(this->cable->GetName());
             std::cout<< "cable destoried: " << cable->GetName() << std::endl;
+            
             // update rod's visual
             // prepare visual message
             visualMsg.set_name(link->GetScopedName());
