@@ -15,6 +15,13 @@
 #include <env_ctrl/CylinderProperties.h>
 #include "std_msgs/String.h"
 
+#include <sys/time.h>
+
+#define PUB_DATA     000
+#define REMOVE_CABLE 100
+#define MOVE_ROD     200
+#define CREATE_CABLE 300
+
 namespace gazebo
 {
   class EnvMod : public WorldPlugin
@@ -95,51 +102,59 @@ namespace gazebo
       }
       void OnUpdate()
       {
-        if (this->rod == NULL && rod_ready==true)
+
+        if (this->rod == NULL && rod_found==true)
         {
+          // Get rod's pointer
+          std::cout << "-> Get rod ptr" << std::endl;
           this->rod = this->world->ModelByName("rod");
           if (this->rod != NULL)
             std::cout << "Get model: " << rod->GetName() << std::endl;
+          this->rod_found = false;
         }
-        if (this->cable == NULL && cable_ready==true)
+        if (this->cable==NULL && cable_found==true)
         {
+          // Get cable's pointer
+          std::cout << "-> Get cable ptr" << std::endl;
           physics::Model_V list = this->world->Models();
 
           for (int i=0; i < this->world->ModelCount(); i++)
           {
             std::string name = list[i]->GetName();
-            std::cout << name << std::endl;
-          //   if (name.find("cable") != std::string::npos)
-          //   {
-          //       this->cable = this->world->ModelByName(name);
-          //   }
+            std::cout << "found model: " << name << std::endl;
           }
           this->cable = this->world->ModelByName("cable");
           if (this->cable != NULL)
             std::cout << "Get model: " << cable->GetName() << std::endl;
 
-          cable_ready==false;
+          this->cable_found = false;
         }
-        if (this->rod != NULL && this->cable != NULL)
+
+        // environment update state machine
+        if (this->stage == REMOVE_CABLE)
         {
-          // Get link "target_rod"
-          physics::LinkPtr link = this->rod->GetLink("target_rod");
-          // Get link collision property
-          physics::CollisionPtr collision = link->GetCollision("target_rod_collision");
-          physics::ShapePtr shape = collision->GetShape();
-          int shape_type = collision->GetShapeType();
-          boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
-
-          // Get link visual property
-          msgs::Visual visualMsg = link->GetVisualMessage("target_rod_vis");
-
-          // update model property if needed.
-          if (new_properties)
+          std::cout << "-> Remove cable" << std::endl;
+          if (this->cable != NULL)
           {
-            world->RemoveModel(this->cable->GetName());
-            std::cout<< "cable destoried: " << cable->GetName() << std::endl;
-            
+            world->RemoveModel(this->cable->GetName()); 
+            this->stage = MOVE_ROD;
+            // std::cout<< "cable destoried: " << cable->GetName() << std::endl;
+          }
+          this->prev_timestamp = get_timestamp();
+        }
+        else if (this->stage == MOVE_ROD)
+        {
+          // Delete model takes time. (Set to 500ms for now)
+          long long now_timestamp = get_timestamp();
+
+          if (this->rod!=NULL && now_timestamp-this->prev_timestamp > 500)
+          {
+            std::cout << "-> Update rod position" << std::endl;
+            physics::LinkPtr link = this->rod->GetLink("target_rod");
+
             // update rod's visual
+            // Get link visual property
+            msgs::Visual visualMsg = link->GetVisualMessage("target_rod_vis");
             // prepare visual message
             visualMsg.set_name(link->GetScopedName());
             visualMsg.set_parent_name(rod->GetScopedName());
@@ -162,36 +177,69 @@ namespace gazebo
             ignition::math::Pose3d rod_new_pose(pos_vec, rod_rot);
             this->rod->SetWorldPose(rod_new_pose);
 
+            // Get link collision property
+            physics::CollisionPtr collision = link->GetCollision("target_rod_collision");
+            physics::ShapePtr shape = collision->GetShape();
+            int shape_type = collision->GetShapeType();
+            boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
+
             cylinder->SetSize(properties[3], properties[4]);
-
-            std::cout << "new cable" << std::endl;
-
-            msgs::Factory msg;
-            msg.set_sdf_filename("model://cable");
-
-            // Pose to initialize the model to
-            msgs::Set(msg.mutable_pose(),
-                ignition::math::Pose3d(
-                  ignition::math::Vector3d(properties[0]-0.6, properties[1], properties[2]+properties[3]+0.1),
-                  ignition::math::Quaterniond(0, 0, 0)));
-            factPub->Publish(msg);
-
-            new_properties = false;
-            std::cout << "new set up done" << std::endl;
+            this->stage = CREATE_CABLE;
           }
-          
-          // publish link pose and states
-          env_ctrl::CylinderProperties msg;
-          ignition::math::Pose3d pose = link->WorldPose();
-          ignition::math::Vector3<double> position = pose.Pos();
+        }
+        else if (this->stage == CREATE_CABLE)
+        {
+          std::cout << "-> Create cable" << std::endl;
+          msgs::Factory msg;
+          msg.set_sdf_filename("model://cable");
 
-          // x, y, z, radius, length
-          msg.x = position.X();
-          msg.y = position.Y();
-          msg.z = position.Z();
-          msg.r = cylinder->GetRadius();
-          msg.l = cylinder->GetLength();
-          properties_pub.publish(msg);
+          // Pose to initialize the model to
+          msgs::Set(msg.mutable_pose(),
+              ignition::math::Pose3d(
+                ignition::math::Vector3d(properties[0]-0.6, properties[1], properties[2]+properties[3]+0.1),
+                ignition::math::Quaterniond(0, 0, 0)));
+          factPub->Publish(msg);
+
+          this->stage = PUB_DATA;
+        }
+        else if (this->stage == PUB_DATA)
+        {
+          if (this->rod != NULL)
+          {
+            // Get link "target_rod"
+            physics::LinkPtr link = this->rod->GetLink("target_rod");
+            // Get link collision property
+            physics::CollisionPtr collision = link->GetCollision("target_rod_collision");
+            physics::ShapePtr shape = collision->GetShape();
+            int shape_type = collision->GetShapeType();
+            boost::shared_ptr<physics::CylinderShape> cylinder = boost::dynamic_pointer_cast<physics::CylinderShape>(shape);
+
+            // publish link pose and states
+            env_ctrl::CylinderProperties msg;
+            ignition::math::Pose3d pose = link->WorldPose();
+            ignition::math::Vector3<double> position = pose.Pos();
+
+            // x, y, z, radius, length
+            msg.x = position.X();
+            msg.y = position.Y();
+            msg.z = position.Z();
+            msg.r = cylinder->GetRadius();
+            msg.l = cylinder->GetLength();
+            properties_pub.publish(msg);
+            if (new_properties)
+            {
+              this->stage = REMOVE_CABLE;
+              new_properties = false;
+            }
+          }
+        }
+        else
+        {
+          // error happens?
+          if (this->cable != NULL && cable_found != false)
+          {
+            this->stage = PUB_DATA;
+          }
         }
       }
 
@@ -208,11 +256,15 @@ namespace gazebo
       // Pointer to the update event connection
       physics::ModelPtr rod = NULL;
       physics::ModelPtr cable = NULL;
-      bool rod_ready = false;
-      bool cable_ready = false;
+      bool rod_found = false;
+      bool cable_found = false;
+      // stage is either: PUB_DATA, REMOVE_CABLE, MOVE_ROD, or CREATE_CABLE
+      int stage = PUB_DATA;
       // Pointer to the update event connection
       event::ConnectionPtr updateConnection;
       event::ConnectionPtr add_entity_connection;
+
+      long long prev_timestamp = 0;
 
       // To update the visual
       transport::NodePtr node;
@@ -226,25 +278,34 @@ namespace gazebo
       {
         // Check entity name...
         // Trigger initialization...
-        std::cout << "Callback get:" << name << std::endl;
+        std::cout << "Add Entity get:" << name << std::endl;
         if (name=="rod")
-          rod_ready = true;
-        std::cout << "Callback get:" << name << std::endl;
+          rod_found = true;
+        std::cout << "Add Entity get:" << name << std::endl;
         if (name=="cable")
-          cable_ready = true;
+          cable_found = true;
       }
 
       void properties_callback(const env_ctrl::CylinderProperties::ConstPtr& msg)
       {
-        ROS_INFO("sub callback");
         this->properties[0] = msg->x;
         this->properties[1] = msg->y;
         this->properties[2] = msg->z;
         this->properties[3] = msg->r;
         this->properties[4] = msg->l;
         new_properties = true;
+        std::cout << "subcriber callback get: ";
         std::cout << properties[0] << ", " << properties[1] << ", " << properties[2];
         std::cout << ", " << properties[3] << ", " << properties[4] << ", " <<std::endl;
+      }
+
+      long long get_timestamp()
+      {
+        struct timeval te;
+        gettimeofday(&te, NULL); // get current time
+        long long milliseconds = te.tv_sec*1000LL + te.tv_usec/1000; // calculate milliseconds
+        // printf("milliseconds: %lld\n", milliseconds);
+        return milliseconds;
       }
 
   };

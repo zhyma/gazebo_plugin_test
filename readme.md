@@ -4,3 +4,4 @@
 - Compile workspace.
 - In one terminal, run `roslaunch env_ctrl test.launch`
 - In another terminal, run `rostopic pub -1 /set_rod_properties env_ctrl/CylinderProperties "{x: .4, y: .0, z: 0.3, r: 0.03, l: 0.1}"`. Values are arbitrary.
+![](demo.gif)
